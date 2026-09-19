@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 
 const fixture = (name: string) => fileURLToPath(new URL(`../../fixtures/${name}`, import.meta.url))
 
-async function openFixture(page: import('@playwright/test').Page, name: string) {
+async function openFixture(page: Page, name: string) {
   await page.goto('/')
   await page.getByTestId('file-input').setInputFiles(fixture(name))
   await expect(page.getByTestId('grid')).toBeVisible({ timeout: 20_000 })

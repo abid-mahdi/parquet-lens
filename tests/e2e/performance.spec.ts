@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -18,7 +19,7 @@ const bigFixture = existsSync(fixture('big')) ? 'big' : 'manyrowgroups'
 test.use({ viewport: { width: 1440, height: 900 } })
 test.setTimeout(180_000)
 
-async function open(page: import('@playwright/test').Page, name: string) {
+async function open(page: Page, name: string) {
   await page.goto('/')
   const started = Date.now()
   await page.getByTestId('file-input').setInputFiles(fixture(name))
