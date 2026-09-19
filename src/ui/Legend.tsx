@@ -5,12 +5,16 @@ import type { TableColumn } from '../core/types'
 interface Props {
   summary: TableSummary
   selectedColumn: string | null
+  selectedColumns: string[]
   onSelectColumn: (name: string) => void
+  onToggleColumn: (name: string) => void
   onScopeToPart: (partIndex: number) => void
   scopedPart: number | null
 }
 
-export function Legend({ summary, selectedColumn, onSelectColumn, onScopeToPart, scopedPart }: Props) {
+export function Legend({
+  summary, selectedColumn, selectedColumns, onSelectColumn, onToggleColumn, onScopeToPart, scopedPart,
+}: Props) {
   const avgPartBytes = summary.parts.length ? summary.totalBytes / summary.parts.length : 0
   const avgRowGroupRows = summary.rowGroupCount ? summary.totalRows / summary.rowGroupCount : 0
 
@@ -49,6 +53,14 @@ export function Legend({ summary, selectedColumn, onSelectColumn, onScopeToPart,
               onClick={() => onSelectColumn(column.name)}
               data-testid={`schema-${column.name}`}
             >
+              <input
+                type="checkbox"
+                checked={selectedColumns.length === 0 || selectedColumns.includes(column.name)}
+                onClick={(event) => event.stopPropagation()}
+                onChange={() => onToggleColumn(column.name)}
+                aria-label={`Include ${column.name} in select()`}
+                data-testid={`toggle-${column.name}`}
+              />
               <span className="name">{column.name}</span>
               {column.nullable && <span className="type">?</span>}
               <span className="type">{describe(column)}</span>

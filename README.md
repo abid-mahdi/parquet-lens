@@ -48,8 +48,12 @@ No JVM, no Spark, no Docker. Node 22+ is the only requirement.
   and compression ratio. A part scopes the grid to exactly the rows one Spark task would read.
 - **A legend bound to your file.** It explains file, row group, column chunk and page using the actual
   numbers in front of you, and points out the small-file problem when your parts average 35 KB.
-- **The Spark equivalent of every click**, copyable, so exploring by clicking still teaches you the
-  `spark-shell` command.
+- **Your clicks compose into a real Spark command.** Sort a column, filter a value, pick columns, scope
+  to a part, and the panel at the bottom accumulates the Scala you would have typed. Copy it and paste it
+  into `spark-shell`.
+- **Those clicks actually run.** Filters and sorts are executed against the file, not just printed, and
+  the panel reports how much work was avoided: `11 of 12 row groups skipped unread`, `3 partitions
+  pruned`. That is predicate pushdown and partition pruning, shown on your own data.
 
 ## Performance
 
@@ -89,14 +93,19 @@ src/ui/        grid, legend, inspectors
 `src/core` has no browser dependency, so the majority of the test suite runs in plain Node against real
 fixtures with no browser at all.
 
+Deeply nested data is covered explicitly: a fixture with five levels of struct, `array<array<array<int>>>`,
+`map<string, array<struct<..., array<double>>>>` and nulls seeded at every depth. hyparquet returns
+`undefined` for a null inside a nested value, which `JSON.stringify` then drops entirely, so nulls are
+normalized back before display or an explicitly-null field would silently vanish.
+
 Five runtime dependencies: `react`, `react-dom`, `@tanstack/react-virtual`, `hyparquet`,
 `hyparquet-compressors`.
 
 ## Testing
 
 ```bash
-npm test          # 40 unit tests, pure Node, ~400 ms
-npm run test:e2e  # 10 browser tests + 4 performance budgets
+npm test          # 109 unit tests, pure Node, under a second
+npm run test:e2e  # 24 browser tests + 4 performance budgets
 npm run lint
 npm run typecheck
 ```
@@ -113,12 +122,29 @@ performance fixture:
 
 That script needs Java 11 and sbt. Nothing else in the project does.
 
+## Building a query by clicking
+
+| Click | Clause | What it does |
+| --- | --- | --- |
+| Column header | opens the profile | encodings, codec, nulls, min/max, compression |
+| Shift-click header | `.orderBy(...)` | sorts without opening anything |
+| Sort ↑ / ↓ in the profile | `.orderBy(...)` | scans that column and reorders |
+| Filter in the profile | `.filter(...)` | skips row groups whose statistics cannot match |
+| `filter` beside a row value | `.filter($"col" === value)` | filter straight from a cell |
+| Schema checkbox | `.select(...)` | projects the grid and the command |
+| A part in the legend | reads one file | the slice a single Spark task would read |
+
+Every clause is a removable chip, and `Reset` clears them all.
+
+Filtering a **partition** column prunes whole directories without opening a parquet file. Filtering a
+**data** column uses each row group's min/max statistics to skip groups that cannot contain a match. The
+panel reports both, which makes pushdown visible on data you recognise.
+
 ## Not in this version
 
-- **Sorting and filtering across the whole table.** Both need a full column scan or a real query
-  engine. The honest place for them is DuckDB-WASM, which is ~40 MB and would undermine the instant
-  open this is built around. The query layer sits behind an interface so it can be added without a
-  rewrite.
+- **Multi-column sort and OR across filters.** Filters combine with AND and one sort column at a time.
+- **Aggregation** (`groupBy`, `count`, `avg`). That wants a real query engine; DuckDB-WASM is the honest
+  home for it, and at ~40 MB it would undermine the instant open this is built around.
 - **Remote files over HTTP range requests.** `hyparquet` supports it; the UI doesn't expose it yet.
 
 ## Privacy

@@ -13,8 +13,11 @@ interface Props {
   window: RowWindow
   selectedRow: number | null
   selectedColumn: string | null
+  selectedColumns: string[]
+  sort: { column: string; direction: 'asc' | 'desc' } | null
   onSelectRow: (index: number) => void
   onSelectColumn: (name: string) => void
+  onSortColumn: (name: string) => void
 }
 
 export function DataGrid({
@@ -23,8 +26,11 @@ export function DataGrid({
   window: rowWindow,
   selectedRow,
   selectedColumn,
+  selectedColumns,
+  sort,
   onSelectRow,
   onSelectColumn,
+  onSortColumn,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
@@ -84,13 +90,20 @@ export function DataGrid({
             return (
               <div
                 key={column.name}
-                className={headClass(column, selectedColumn)}
+                className={headClass(column, selectedColumn, selectedColumns)}
                 style={{ left: GUTTER_WIDTH + item.start, width: item.size }}
-                title={`${column.name} — ${typeLabel(column)}`}
-                onClick={() => onSelectColumn(column.name)}
+                title={`${column.name} — ${typeLabel(column)}. Click to inspect, shift-click to sort.`}
+                onClick={(event) =>
+                  event.shiftKey ? onSortColumn(column.name) : onSelectColumn(column.name)
+                }
                 data-testid={`col-${column.name}`}
               >
                 <span>{column.name}</span>
+                {sort?.column === column.name && (
+                  <span className="sort" data-testid={`sort-${column.name}`}>
+                    {sort.direction === 'asc' ? '▲' : '▼'}
+                  </span>
+                )}
                 <span className="type">{typeLabel(column)}</span>
               </div>
             )
@@ -164,10 +177,11 @@ function Cell({ column, value, loaded, left, width }: CellProps) {
   )
 }
 
-function headClass(column: TableColumn, selected: string | null): string {
+function headClass(column: TableColumn, selected: string | null, inSelect: string[]): string {
   const classes = ['head-cell']
   if (column.origin === 'partition') classes.push('partition')
   if (column.name === selected) classes.push('selected')
+  if (inSelect.includes(column.name)) classes.push('in-select')
   return classes.join(' ')
 }
 

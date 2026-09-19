@@ -1,15 +1,23 @@
 import { formatBytes, formatCount } from '../core/format'
 import type { TableSummary } from '../core/summary'
 import type { TableColumn } from '../core/types'
-import { SparkSnippet } from './SparkSnippet'
+import { ColumnActions } from './ColumnActions'
+import type { PredicateOp, Query } from '../core/query'
+import type { CellValue } from '../core/types'
 
 interface Props {
   column: TableColumn
   summary: TableSummary
+  query: Query
   onClose: () => void
+  onToggleSelect: () => void
+  onSort: (direction: 'asc' | 'desc') => void
+  onFilter: (op: PredicateOp, value: CellValue) => void
 }
 
-export function ColumnProfile({ column, summary, onClose }: Props) {
+export function ColumnProfile({
+  column, summary, query, onClose, onToggleSelect, onSort, onFilter,
+}: Props) {
   const chunks = summary.parts.flatMap((part) =>
     part.rowGroups.flatMap((group) =>
       group.columns.filter((chunk) => chunk.name === column.name).map((chunk) => ({ part, group, chunk })),
@@ -35,6 +43,14 @@ export function ColumnProfile({ column, summary, onClose }: Props) {
         </button>
       </header>
       <div className="body">
+        <ColumnActions
+          column={column}
+          query={query}
+          suggestions={suggestionsFor(column, summary)}
+          onToggleSelect={onToggleSelect}
+          onSort={onSort}
+          onFilter={onFilter}
+        />
         {column.origin === 'partition' ? (
           <>
             <div className="kv">
@@ -51,12 +67,6 @@ export function ColumnProfile({ column, summary, onClose }: Props) {
               Filtering on a partition column lets Spark skip entire directories without opening a single
               parquet file. That is partition pruning, the cheapest filter there is.
             </div>
-            <SparkSnippet
-              label="Spark equivalent"
-              code={`${summary.name}.filter($"${column.name}" === "${
-                summary.parts[0]?.partitions[column.name] ?? ''
-              }")  // prunes whole directories`}
-            />
           </>
         ) : (
           <>
@@ -110,13 +120,23 @@ export function ColumnProfile({ column, summary, onClose }: Props) {
               </div>
             )}
 
-            <SparkSnippet
-              label="Spark equivalent"
-              code={`${summary.name}.select($"${column.name}").describe().show()\n${summary.name}.select($"${column.name}").distinct().count()`}
-            />
           </>
         )}
       </div>
     </div>
   )
+}
+
+function suggestionsFor(column: TableColumn, summary: TableSummary): string[] {
+  if (column.origin === 'partition') {
+    return [...new Set(summary.parts.map((part) => part.partitions[column.name] ?? ''))]
+      .filter(Boolean)
+      .sort()
+  }
+
+  const bounds = summary.parts
+    .flatMap((part) => part.rowGroups.flatMap((group) => group.columns))
+    .filter((chunk) => chunk.name === column.name)
+  const values = [...new Set(bounds.flatMap((chunk) => [chunk.min, chunk.max]))]
+  return values.filter((value): value is string => value !== null).slice(0, 12)
 }

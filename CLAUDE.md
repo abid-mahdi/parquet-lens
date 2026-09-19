@@ -44,6 +44,18 @@ committed so tests and CI need no JVM. `--big` builds the gitignored 469 MB perf
   The schema-mismatch test asserts actual cell text and a nonzero cache, because the weak version passed
   while the grid was completely broken.
 
+## Query builder
+Clicks accumulate into a Query (`src/core/query.ts`, pure and fully tested) which is both rendered as
+Scala and executed (`src/core/execute.ts`). Execution returns physical row indices; the grid addresses
+rows through that view.
+
+- **The row cache key must advance on every applied query**, not on row count. A sort changes order but
+  not count, and keying on count left the grid showing stale unsorted rows while the header and the
+  generated code both claimed it was sorted. Screenshots caught it; the test had passed by coincidence
+  because the first unsorted value happened to equal the first sorted one.
+- Partition filters prune whole parts without reading. Data filters skip row groups via min/max
+  statistics. Both counts are surfaced in the panel, which is the main teaching payload.
+
 ## Not built yet
-Whole-table sort and filter (needs DuckDB-WASM, ~40 MB, deliberately deferred), remote files over HTTP
-range requests.
+Multi-column sort, OR across filters, aggregation (wants DuckDB-WASM, ~40 MB, deliberately deferred),
+remote files over HTTP range requests.

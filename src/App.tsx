@@ -4,171 +4,130 @@ import { DataGrid } from './ui/DataGrid'
 import { Legend } from './ui/Legend'
 import { RowDrawer } from './ui/RowDrawer'
 import { ColumnProfile } from './ui/ColumnProfile'
+import { QueryPanel } from './ui/QueryPanel'
+import { TopBar } from './ui/TopBar'
+import { useParquetTable } from './hooks/useParquetTable'
+import { useTableQuery } from './hooks/useTableQuery'
 import { useRowWindow } from './hooks/useRowWindow'
-import { ParquetClient } from './worker/client'
-import { tableNameFor } from './core/sources'
-import { formatBytes, formatCount } from './core/format'
-import type { TableSummary } from './core/summary'
-import type { SourceFile } from './core/types'
+import { cycleSort, toggleSelected, withFilter, withoutFilter } from './core/query'
+import type { PredicateOp } from './core/query'
+import type { CellValue } from './core/types'
 import { applyTheme, preferredTheme, type Theme } from './theme'
 
 export function App() {
-  const [client, setClient] = useState<ParquetClient | null>(null)
-  const [summary, setSummary] = useState<TableSummary | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const table = useParquetTable()
+  const { summary, client } = table
+
+  const query = useTableQuery(client, summary?.totalRows ?? 0, table.reportError)
   const [selectedRow, setSelectedRow] = useState<number | null>(null)
   const [selectedColumn, setSelectedColumn] = useState<string | null>(null)
-  const [scopedPart, setScopedPart] = useState<number | null>(null)
   const [theme, setTheme] = useState<Theme>(preferredTheme)
 
-  useEffect(() => {
-    applyTheme(theme)
-  }, [theme])
-
-  useEffect(() => () => client?.terminate(), [client])
-
-  const openFiles = useCallback(
-    async (sources: SourceFile[]) => {
-      if (sources.length === 0) {
-        setError('No .parquet files found in that drop. Spark writes them inside a directory.')
-        return
-      }
-
-      setBusy(true)
-      setError(null)
-      setSummary(null)
-      setSelectedRow(null)
-      setSelectedColumn(null)
-      setScopedPart(null)
-
-      const next = new ParquetClient()
-      try {
-        const files = await Promise.all(
-          sources.map(async (source) => ({
-            file: await sourceToFile(source),
-            relativePath: source.relativePath,
-          })),
-        )
-        const opened = await next.open(tableNameFor(sources, 'df'), files)
-        setClient((previous) => {
-          previous?.terminate()
-          return next
-        })
-        setSummary(opened)
-      } catch (cause) {
-        next.terminate()
-        setError(cause instanceof Error ? cause.message : String(cause))
-      } finally {
-        setBusy(false)
-      }
-    },
-    [],
-  )
+  useEffect(() => applyTheme(theme), [theme])
+  useEffect(() => setSelectedRow(null), [query.version])
 
   const scope = useMemo(() => {
     if (!summary) return { offset: 0, count: 0 }
-    if (scopedPart === null) return { offset: 0, count: summary.totalRows }
-    const part = summary.parts[scopedPart]
-    return part ? { offset: part.firstRow, count: part.rowCount } : { offset: 0, count: summary.totalRows }
-  }, [summary, scopedPart])
+    if (query.query.scopedPart === null) return { offset: 0, count: query.rowCount }
 
-  const columnNames = useMemo(() => summary?.columns.map((c) => c.name), [summary])
-  const rowWindow = useRowWindow(client, summary?.totalRows ?? 0, columnNames)
+    const part = summary.parts[query.query.scopedPart]
+    return part
+      ? { offset: part.firstRow, count: part.rowCount }
+      : { offset: 0, count: query.rowCount }
+  }, [summary, query.query.scopedPart, query.rowCount])
 
-  const scopedWindow = useMemo(
+  const projected = useMemo(() => {
+    if (!summary) return []
+    if (query.query.select.length === 0) return summary.columns
+    return summary.columns.filter((column) => query.query.select.includes(column.name))
+  }, [summary, query.query.select])
+
+  const columnNames = useMemo(() => projected.map((column) => column.name), [projected])
+  const generation = `${query.version}:${query.query.scopedPart}`
+  const rows = useRowWindow(client, query.rowCount, columnNames, generation)
+
+  const scopedRows = useMemo(
     () => ({
-      ...rowWindow,
-      getRow: (index: number) => rowWindow.getRow(index + scope.offset),
+      ...rows,
+      getRow: (index: number) => rows.getRow(index + scope.offset),
       requestRange: (start: number, end: number) =>
-        rowWindow.requestRange(start + scope.offset, end + scope.offset),
+        rows.requestRange(start + scope.offset, end + scope.offset),
     }),
-    [rowWindow, scope.offset],
+    [rows, scope.offset],
   )
 
-  const activeColumn = summary?.columns.find((c) => c.name === selectedColumn) ?? null
+  const inspectRow = useCallback((index: number) => {
+    setSelectedColumn(null)
+    setSelectedRow(index)
+  }, [])
+
+  const inspectColumn = useCallback((name: string) => {
+    setSelectedRow(null)
+    setSelectedColumn(name)
+  }, [])
+
+  const filterToValue = useCallback(
+    (column: string, value: CellValue) => {
+      query.update((current) => withFilter(current, { column, op: 'eq', value }))
+      setSelectedRow(null)
+    },
+    [query],
+  )
+
+  const activeColumn = summary?.columns.find((column) => column.name === selectedColumn) ?? null
 
   return (
     <div className="app">
-      <header className="topbar">
-        <h1>
-          Parquet <span>Lens</span>
-        </h1>
-        {summary && (
-          <>
-            <span className="badge">{summary.name}</span>
-            <span className="badge">{formatCount(summary.totalRows)} rows</span>
-            <span className="badge">{summary.columns.length} cols</span>
-            <span className="badge">
-              {summary.parts.length} part{summary.parts.length === 1 ? '' : 's'}
-            </span>
-            <span className="badge">{formatBytes(summary.totalBytes)}</span>
-          </>
-        )}
-        <span className="spacer" />
-        <span className="badge private">Nothing uploaded</span>
-        {summary && (
-          <button
-            onClick={() => {
-              client?.terminate()
-              setClient(null)
-              setSummary(null)
-            }}
-          >
-            Close
-          </button>
-        )}
-        <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} data-testid="theme-toggle">
-          {theme === 'dark' ? 'Light' : 'Dark'}
-        </button>
-      </header>
+      <TopBar
+        summary={summary}
+        rowCount={query.rowCount}
+        columnCount={projected.length}
+        theme={theme}
+        onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        onClose={table.close}
+      />
 
-      {error && (
+      {table.error && (
         <div className="error-panel" data-testid="error">
           <strong>Could not open that table</strong>
-          <pre>{error}</pre>
+          <pre>{table.error}</pre>
         </div>
       )}
 
       <div className="workspace">
         <main className="main">
           {!summary ? (
-            <DropZone onFiles={openFiles} busy={busy} />
+            <DropZone onFiles={table.open} busy={table.opening} />
           ) : (
             <>
               <DataGrid
-                columns={summary.columns}
+                columns={projected}
                 totalRows={scope.count}
-                window={scopedWindow}
+                window={scopedRows}
                 selectedRow={selectedRow}
                 selectedColumn={selectedColumn}
-                onSelectRow={(index) => {
-                  setSelectedColumn(null)
-                  setSelectedRow(index)
-                }}
-                onSelectColumn={(name) => {
-                  setSelectedRow(null)
-                  setSelectedColumn(name)
-                }}
+                selectedColumns={query.query.select}
+                sort={query.query.sort}
+                onSelectRow={inspectRow}
+                onSelectColumn={inspectColumn}
+                onSortColumn={(name) => query.update((current) => cycleSort(current, name))}
               />
-              <div className="statusbar" data-testid="statusbar">
-                <span>
-                  {scopedPart === null
-                    ? `${formatCount(summary.totalRows)} rows`
-                    : `part ${scopedPart}: ${formatCount(scope.count)} rows`}
-                </span>
-                <span>{summary.rowGroupCount} row groups</span>
-                <span>{summary.compressionRatio.toFixed(1)}x compressed</span>
-                <span className="spacer" />
-                {rowWindow.error && (
-                  <span style={{ color: 'var(--danger)' }} data-testid="read-error">
-                    {rowWindow.error}
-                  </span>
-                )}
-                {rowWindow.pendingBlocks > 0 && <span className="live">decoding...</span>}
-                <span>{rowWindow.loadedBlocks} blocks cached</span>
-                {scopedPart !== null && <button onClick={() => setScopedPart(null)}>Show all parts</button>}
-              </div>
+              <QueryPanel
+                query={query.query}
+                summary={summary}
+                stats={query.stats}
+                rowCount={query.rowCount}
+                running={query.running}
+                progress={query.progress}
+                readError={rows.error}
+                loadedBlocks={rows.loadedBlocks}
+                pendingBlocks={rows.pendingBlocks}
+                onRemoveFilter={(index) => query.update((c) => withoutFilter(c, index))}
+                onClearSelect={() => query.update((c) => ({ ...c, select: [] }))}
+                onClearSort={() => query.update((c) => ({ ...c, sort: null }))}
+                onClearScope={() => query.update((c) => ({ ...c, scopedPart: null }))}
+                onReset={query.reset}
+              />
             </>
           )}
         </main>
@@ -177,12 +136,13 @@ export function App() {
           <Legend
             summary={summary}
             selectedColumn={selectedColumn}
-            onSelectColumn={(name) => {
-              setSelectedRow(null)
-              setSelectedColumn(name)
-            }}
-            onScopeToPart={(index) => setScopedPart((current) => (current === index ? null : index))}
-            scopedPart={scopedPart}
+            selectedColumns={query.query.select}
+            onSelectColumn={inspectColumn}
+            onToggleColumn={(name) => query.update((c) => toggleSelected(c, name))}
+            onScopeToPart={(index) =>
+              query.update((c) => ({ ...c, scopedPart: c.scopedPart === index ? null : index }))
+            }
+            scopedPart={query.query.scopedPart}
           />
         )}
       </div>
@@ -190,26 +150,28 @@ export function App() {
       {summary && selectedRow !== null && (
         <RowDrawer
           index={selectedRow + scope.offset}
-          row={scopedWindow.getRow(selectedRow)}
-          columns={summary.columns}
-          tableName={summary.name}
+          row={scopedRows.getRow(selectedRow)}
+          columns={projected}
           onClose={() => setSelectedRow(null)}
+          onFilterToValue={filterToValue}
         />
       )}
 
       {summary && activeColumn && (
-        <ColumnProfile column={activeColumn} summary={summary} onClose={() => setSelectedColumn(null)} />
+        <ColumnProfile
+          column={activeColumn}
+          summary={summary}
+          query={query.query}
+          onClose={() => setSelectedColumn(null)}
+          onToggleSelect={() => query.update((c) => toggleSelected(c, activeColumn.name))}
+          onSort={(direction) =>
+            query.update((c) => ({ ...c, sort: { column: activeColumn.name, direction } }))
+          }
+          onFilter={(op: PredicateOp, value: CellValue) =>
+            query.update((c) => withFilter(c, { column: activeColumn.name, op, value }))
+          }
+        />
       )}
     </div>
   )
-}
-
-/** The worker needs a transferable File, which the browser source already wraps. */
-async function sourceToFile(source: SourceFile): Promise<File> {
-  const withFile = source as SourceFile & { file?: File }
-  if (withFile.file) return withFile.file
-
-  const buffer = await source.open()
-  const bytes = await buffer.slice(0, buffer.byteLength)
-  return new File([bytes], source.name)
 }

@@ -23,11 +23,12 @@ export function useRowWindow(
   client: ParquetClient | null,
   totalRows: number,
   columns: string[] | undefined,
+  generation: string,
 ): RowWindow {
   const blocks = useRef(new Map<number, Row[]>()).current
   const inFlight = useRef(new Set<number>()).current
   const order = useRef<number[]>([]).current
-  const generation = useRef(0)
+  const generationRef = useRef(0)
   const scheduled = useRef<number | null>(null)
   const target = useRef<{ start: number; end: number }>({ start: 0, end: 0 })
 
@@ -40,9 +41,9 @@ export function useRowWindow(
     blocks.clear()
     inFlight.clear()
     order.length = 0
-    generation.current++
+    generationRef.current++
     setVersion((v) => v + 1)
-  }, [client, columnKey, blocks, inFlight, order])
+  }, [client, columnKey, generation, blocks, inFlight, order])
 
   const fetchBlock = useCallback(
     async (block: number, currentGeneration: number) => {
@@ -54,7 +55,7 @@ export function useRowWindow(
 
       try {
         const rows = await client.rows(start, end, columns)
-        if (generation.current !== currentGeneration) return
+        if (generationRef.current !== currentGeneration) return
 
         blocks.set(block, rows)
         order.push(block)
@@ -64,7 +65,7 @@ export function useRowWindow(
         }
         setVersion((v) => v + 1)
       } catch (cause) {
-        if (generation.current === currentGeneration) {
+        if (generationRef.current === currentGeneration) {
           setError(cause instanceof Error ? cause.message : String(cause))
         }
       } finally {
@@ -84,7 +85,7 @@ export function useRowWindow(
     const maxBlock = Math.floor(Math.max(0, totalRows - 1) / BLOCK_ROWS)
 
     for (let block = firstBlock; block <= Math.min(lastBlock, maxBlock); block++) {
-      void fetchBlock(block, generation.current)
+      void fetchBlock(block, generationRef.current)
     }
   }, [client, fetchBlock, totalRows])
 

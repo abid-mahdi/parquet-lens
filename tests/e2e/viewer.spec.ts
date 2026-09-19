@@ -37,8 +37,6 @@ test('clicking a row opens the row inspector', async ({ page }) => {
   await expect(drawer).toBeVisible()
   await expect(drawer).toContainText('Row 4')
   await expect(drawer).toContainText('user_4')
-  await expect(page.getByTestId('spark-snippet')).toContainText('filter($"id"')
-
   await page.getByTestId('close-drawer').click()
   await expect(drawer).toBeHidden()
 })
@@ -67,8 +65,8 @@ test('scoping to one part restricts the grid', async ({ page }) => {
   await openFixture(page, 'multipart')
 
   await page.getByTestId('part-0').click()
-  await expect(page.getByTestId('statusbar')).toContainText('part 0:')
-  await expect(page.getByTestId('statusbar')).not.toContainText('40,000 rows')
+  await expect(page.getByTestId('chip-scope')).toContainText('part 0')
+  await expect(page.getByTestId('query-code')).toContainText('a single Spark task reads')
 })
 
 test('a schema mismatch warns but still renders every row', async ({ page }) => {
@@ -81,7 +79,7 @@ test('a schema mismatch warns but still renders every row', async ({ page }) => 
   await expect(page.locator('[data-testid="row-0"] .cell').nth(1)).toHaveText('n_1')
   await page.getByTestId('grid').evaluate((el) => el.scrollTo(0, 150 * 28))
   await expect(page.locator('[data-testid="row-150"] .cell.null')).toBeVisible({ timeout: 10_000 })
-  await expect(page.getByTestId('statusbar')).not.toContainText('0 blocks cached')
+  await expect(page.getByTestId('cache-state')).not.toContainText('0 blocks cached')
 })
 
 test('reads zstd, the codec Spark uses when tuned for size', async ({ page }) => {
