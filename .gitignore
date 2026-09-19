@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+fixtures/big/
+test-results/
+playwright-report/
+blob-report/
+
+tools/fixture-gen/target/
+tools/fixture-gen/project/target/
+tools/fixture-gen/project/project/
+.bsp/
+
+.DS_Store
