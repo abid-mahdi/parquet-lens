@@ -47,7 +47,9 @@ No JVM, no Spark, no Docker. Node 22+ is the only requirement.
   expanded. A column header opens a profile with encodings, codec, null counts, per-row-group min/max
   and compression ratio. A part scopes the grid to exactly the rows one Spark task would read.
 - **A legend bound to your file.** It explains file, row group, column chunk and page using the actual
-  numbers in front of you, and points out the small-file problem when your parts average 35 KB.
+  numbers in front of you, and flags what is actually wrong: the small-file problem when your parts
+  average 35 KB, uneven parts when one holds several times the median (the usual reason a stage drags),
+  INT96 legacy timestamps, missing statistics, and parts whose schema disagrees.
 - **Your clicks compose into a real Spark command.** Sort a column, filter a value, pick columns, scope
   to a part, and the panel at the bottom accumulates the Scala you would have typed. Copy it and paste it
   into `spark-shell`.
@@ -104,8 +106,8 @@ Five runtime dependencies: `react`, `react-dom`, `@tanstack/react-virtual`, `hyp
 ## Testing
 
 ```bash
-npm test          # 109 unit tests, pure Node, under a second
-npm run test:e2e  # 24 browser tests + 4 performance budgets
+npm test          # 122 unit tests, pure Node, under a second
+npm run test:e2e  # 28 browser tests + 4 performance budgets
 npm run lint
 npm run typecheck
 ```
@@ -135,6 +137,9 @@ That script needs Java 11 and sbt. Nothing else in the project does.
 | A part in the legend | reads one file | the slice a single Spark task would read |
 
 Every clause is a removable chip, and `Reset` clears them all.
+
+Keyboard: `↑`/`↓` move a row, `PageUp`/`PageDown` move a screen, `Home`/`End` jump to the ends, `Esc`
+dismisses, `Cmd/Ctrl+C` copies the selected row as JSON. `go to row` in the header jumps anywhere.
 
 Filtering a **partition** column prunes whole directories without opening a parquet file. Filtering a
 **data** column uses each row group's min/max statistics to skip groups that cannot contain a match. The

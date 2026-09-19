@@ -115,6 +115,9 @@ function collectWarnings(parts: PartFile[], schema: SchemaTree): TableWarning[] 
     }
   }
 
+  const skew = detectSkew(parts)
+  if (skew) warnings.push(skew)
+
   const head = parts[0]
   if (head && topLevelColumns(schema).some((c) => c.element.type === 'INT96')) {
     warnings.push({
@@ -138,3 +141,27 @@ function collectWarnings(parts: PartFile[], schema: SchemaTree): TableWarning[] 
   return warnings
 }
 
+const SKEW_RATIO = 2.5
+
+/**
+ * One oversized part means one task runs long after the rest finish, which is
+ * the most common reason a Spark stage drags. Median, not mean, so the outlier
+ * does not hide inside the number it is being compared against.
+ */
+export function detectSkew(parts: PartFile[]): TableWarning | null {
+  if (parts.length < 3) return null
+
+  const counts = parts.map((part) => part.rowCount).sort((a, b) => a - b)
+  const median = counts[Math.floor(counts.length / 2)] ?? 0
+  const largest = counts[counts.length - 1] ?? 0
+  if (median === 0 || largest < median * SKEW_RATIO) return null
+
+  const ratio = (largest / median).toFixed(1)
+  return {
+    kind: 'skew',
+    message: `Uneven parts: the largest holds ${ratio}x the median`,
+    detail:
+      'One task processes far more than the others and the stage waits on it. ' +
+      'repartition() on a higher-cardinality key, or salt the skewed one.',
+  }
+}

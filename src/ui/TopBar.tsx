@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { formatBytes, formatCount } from '../core/format'
 import type { TableSummary } from '../core/summary'
 import type { Theme } from '../theme'
@@ -9,9 +10,13 @@ interface Props {
   theme: Theme
   onToggleTheme: () => void
   onClose: () => void
+  onGoToRow: (index: number) => void
 }
 
-export function TopBar({ summary, rowCount, columnCount, theme, onToggleTheme, onClose }: Props) {
+export function TopBar({
+  summary, rowCount, columnCount, theme, onToggleTheme, onClose, onGoToRow,
+}: Props) {
+  const [target, setTarget] = useState('')
   const filtered = summary !== null && rowCount !== summary.totalRows
 
   return (
@@ -34,6 +39,23 @@ export function TopBar({ summary, rowCount, columnCount, theme, onToggleTheme, o
         </>
       )}
       <span className="spacer" />
+      {summary && (
+        <input
+          className="goto"
+          value={target}
+          placeholder="go to row"
+          inputMode="numeric"
+          aria-label="Go to row number"
+          data-testid="goto-row"
+          onChange={(event) => setTarget(event.target.value.replace(/[^0-9]/g, ''))}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return
+            const row = Number(target)
+            if (row >= 1 && row <= rowCount) onGoToRow(row - 1)
+            setTarget('')
+          }}
+        />
+      )}
       <span className="badge private">Nothing uploaded</span>
       {summary && <button onClick={onClose}>Close</button>}
       <button onClick={onToggleTheme} data-testid="theme-toggle">

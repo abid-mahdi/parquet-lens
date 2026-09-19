@@ -202,3 +202,58 @@ test('filters and sort compose', async ({ page }) => {
   expect(first).toBeGreaterThan(900)
   expect(second).toBeGreaterThanOrEqual(first)
 })
+
+test('keyboard navigates rows and Escape dismisses', async ({ page }) => {
+  await openFixture(page, 'multipart')
+
+  await page.locator('.topbar h1').click()
+  await page.keyboard.press('ArrowDown')
+  await expect(page.getByTestId('row-drawer')).toContainText('Row 1')
+
+  await page.keyboard.press('ArrowDown')
+  await expect(page.getByTestId('row-drawer')).toContainText('Row 2')
+
+  await page.keyboard.press('ArrowUp')
+  await expect(page.getByTestId('row-drawer')).toContainText('Row 1')
+
+  await page.keyboard.press('PageDown')
+  await expect(page.getByTestId('row-drawer')).toContainText('Row 21')
+
+  await page.keyboard.press('End')
+  await expect(page.getByTestId('row-drawer')).toContainText('Row 40000')
+
+  await page.keyboard.press('Home')
+  await expect(page.getByTestId('row-drawer')).toContainText('Row 1')
+
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('row-drawer')).toBeHidden()
+})
+
+test('typing in the filter box is not hijacked by row navigation', async ({ page }) => {
+  await openFixture(page, 'multipart')
+
+  await page.getByTestId('col-amount').click()
+  await page.getByTestId('filter-value').fill('12')
+  await page.getByTestId('filter-value').press('ArrowDown')
+
+  await expect(page.getByTestId('filter-value')).toHaveValue('12')
+  await expect(page.getByTestId('row-drawer')).toBeHidden()
+})
+
+test('go to row jumps deep into the table', async ({ page }) => {
+  await openFixture(page, 'multipart')
+
+  await page.getByTestId('goto-row').fill('35000')
+  await page.getByTestId('goto-row').press('Enter')
+
+  await expect(page.getByTestId('row-drawer')).toContainText('Row 35000')
+  await expect(page.getByTestId('row-34999')).toBeVisible()
+})
+
+test('go to row ignores an out-of-range number', async ({ page }) => {
+  await openFixture(page, 'multipart')
+
+  await page.getByTestId('goto-row').fill('999999')
+  await page.getByTestId('goto-row').press('Enter')
+  await expect(page.getByTestId('row-drawer')).toBeHidden()
+})

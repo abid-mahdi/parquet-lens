@@ -30,7 +30,7 @@ export interface TableColumn {
 }
 
 export interface TableWarning {
-  kind: 'schema-mismatch' | 'small-files' | 'legacy-timestamp' | 'no-statistics'
+  kind: 'schema-mismatch' | 'small-files' | 'legacy-timestamp' | 'no-statistics' | 'skew'
   message: string
   detail?: string
 }

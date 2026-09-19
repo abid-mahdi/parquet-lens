@@ -468,3 +468,20 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 }
 
 .query-stats .spacer { flex: 1; min-width: 12px; }
+
+.goto {
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 11px;
+  width: 88px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+.goto::placeholder { color: var(--text-faint); }
+.goto:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.warning.skew { border-left-color: var(--accent); background: var(--accent-soft); }
+.warning.skew strong { color: var(--accent); }

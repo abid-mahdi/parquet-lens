@@ -89,3 +89,35 @@ describe('warnings', () => {
     expect(table.warnings.some((w) => w.kind === 'legacy-timestamp')).toBe(false)
   })
 })
+
+describe('skew detection', () => {
+  const part = (rowCount: number) =>
+    ({ rowCount, source: { name: 'p', relativePath: 'p', byteLength: 1, open: async () => ({ byteLength: 1, slice: async () => new ArrayBuffer(0) }) }, metadata: {} as never, partitions: {}, firstRow: 0 })
+
+  it('stays quiet when parts are even', async () => {
+    const { detectSkew } = await import('../../src/core/table')
+    expect(detectSkew([part(100), part(105), part(98), part(102)])).toBeNull()
+  })
+
+  it('flags one oversized part', async () => {
+    const { detectSkew } = await import('../../src/core/table')
+    const warning = detectSkew([part(100), part(100), part(100), part(900)])
+    expect(warning?.kind).toBe('skew')
+    expect(warning?.message).toContain('9.0x')
+  })
+
+  it('needs at least three parts before judging', async () => {
+    const { detectSkew } = await import('../../src/core/table')
+    expect(detectSkew([part(10), part(900)])).toBeNull()
+  })
+
+  it('uses the median so a single outlier cannot mask itself', async () => {
+    const { detectSkew } = await import('../../src/core/table')
+    expect(detectSkew([part(10), part(10), part(10), part(10), part(1000)])?.kind).toBe('skew')
+  })
+
+  it('does not divide by zero on empty parts', async () => {
+    const { detectSkew } = await import('../../src/core/table')
+    expect(detectSkew([part(0), part(0), part(0), part(5)])).toBeNull()
+  })
+})

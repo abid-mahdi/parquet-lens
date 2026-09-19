@@ -9,9 +9,11 @@ import { TopBar } from './ui/TopBar'
 import { useParquetTable } from './hooks/useParquetTable'
 import { useTableQuery } from './hooks/useTableQuery'
 import { useRowWindow } from './hooks/useRowWindow'
+import { useKeyboardNavigation } from './hooks/useKeyboardNavigation'
 import { cycleSort, toggleSelected, withFilter, withoutFilter } from './core/query'
 import type { PredicateOp } from './core/query'
 import type { CellValue } from './core/types'
+import { jsonSafe } from './core/format'
 import { applyTheme, preferredTheme, type Theme } from './theme'
 
 export function App() {
@@ -21,6 +23,7 @@ export function App() {
   const query = useTableQuery(client, summary?.totalRows ?? 0, table.reportError)
   const [selectedRow, setSelectedRow] = useState<number | null>(null)
   const [selectedColumn, setSelectedColumn] = useState<string | null>(null)
+  const [revealToken, setRevealToken] = useState(0)
   const [theme, setTheme] = useState<Theme>(preferredTheme)
 
   useEffect(() => applyTheme(theme), [theme])
@@ -61,6 +64,31 @@ export function App() {
     setSelectedRow(index)
   }, [])
 
+  const moveToRow = useCallback((index: number) => {
+    setSelectedColumn(null)
+    setSelectedRow(index)
+    setRevealToken((token) => token + 1)
+  }, [])
+
+  const copySelectedRow = useCallback(() => {
+    if (selectedRow === null) return
+    const row = scopedRows.getRow(selectedRow)
+    if (row) void navigator.clipboard?.writeText(JSON.stringify(row, jsonSafe, 2))
+  }, [selectedRow, scopedRows])
+
+  useKeyboardNavigation({
+    enabled: summary !== null,
+    rowCount: scope.count,
+    selectedRow,
+    pageSize: 20,
+    onSelectRow: moveToRow,
+    onDismiss: () => {
+      setSelectedRow(null)
+      setSelectedColumn(null)
+    },
+    onCopyRow: copySelectedRow,
+  })
+
   const inspectColumn = useCallback((name: string) => {
     setSelectedRow(null)
     setSelectedColumn(name)
@@ -85,6 +113,7 @@ export function App() {
         theme={theme}
         onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
         onClose={table.close}
+        onGoToRow={moveToRow}
       />
 
       {table.error && (
@@ -108,6 +137,7 @@ export function App() {
                 selectedColumn={selectedColumn}
                 selectedColumns={query.query.select}
                 sort={query.query.sort}
+                revealToken={revealToken}
                 onSelectRow={inspectRow}
                 onSelectColumn={inspectColumn}
                 onSortColumn={(name) => query.update((current) => cycleSort(current, name))}

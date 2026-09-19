@@ -15,6 +15,8 @@ interface Props {
   selectedColumn: string | null
   selectedColumns: string[]
   sort: { column: string; direction: 'asc' | 'desc' } | null
+  /** Bumped when the selection moved by keyboard and needs scrolling into view. */
+  revealToken: number
   onSelectRow: (index: number) => void
   onSelectColumn: (name: string) => void
   onSortColumn: (name: string) => void
@@ -28,6 +30,7 @@ export function DataGrid({
   selectedColumn,
   selectedColumns,
   sort,
+  revealToken,
   onSelectRow,
   onSelectColumn,
   onSortColumn,
@@ -65,6 +68,10 @@ export function DataGrid({
   useEffect(() => {
     rowWindow.requestRange(first, last + 1)
   }, [rowWindow, first, last])
+
+  useEffect(() => {
+    if (revealToken > 0 && selectedRow !== null) rows.scrollToIndex(selectedRow, { align: 'auto' })
+  }, [revealToken, selectedRow, rows])
 
   // Pinning the row-number gutter through a CSS variable keeps horizontal
   // scrolling off the React render path entirely.
