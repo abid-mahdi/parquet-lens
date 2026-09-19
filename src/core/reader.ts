@@ -4,6 +4,7 @@ import type { PartFile, Row, SparkTable } from './types'
 import { alignToRowGroups, sliceRange } from './rowIndex'
 import { parquetSchema } from 'hyparquet'
 import { topLevelColumns } from './schema'
+import { normalizeNulls } from './nulls'
 
 export interface ReadOptions {
   signal?: AbortSignal
@@ -74,11 +75,36 @@ async function readPart(
     useOffsetIndex: true,
   })) as Row[]
 
+  const nested = nestedColumnNames(part)
+  if (nested.size > 0) {
+    for (const row of rows) {
+      for (const name of nested) {
+        if (name in row) row[name] = normalizeNulls(row[name]) as Row[string]
+      }
+    }
+  }
+
   if (missing.length === 0) return rows
 
   const filler: Row = {}
   for (const name of missing) filler[name] = null
   return rows.map((row) => ({ ...row, ...filler }))
+}
+
+const nestedNameCache = new WeakMap<PartFile, Set<string>>()
+
+/** Only group columns need the null walk, so flat tables pay nothing. */
+function nestedColumnNames(part: PartFile): Set<string> {
+  const cached = nestedNameCache.get(part)
+  if (cached) return cached
+
+  const names = new Set(
+    topLevelColumns(parquetSchema(part.metadata))
+      .filter((node) => node.children.length > 0)
+      .map((node) => node.element.name),
+  )
+  nestedNameCache.set(part, names)
+  return names
 }
 
 const columnNameCache = new WeakMap<PartFile, Set<string>>()
