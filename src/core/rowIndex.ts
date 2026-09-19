@@ -57,10 +57,19 @@ export function sliceRange(parts: PartFile[], start: number, end: number): PartS
 }
 
 /**
- * Row groups are the unit hyparquet decompresses, so an unaligned window
- * decodes the same pages repeatedly. Snapping to boundaries makes cache hits real.
+ * Row groups are the unit hyparquet decompresses, so snapping a window to their
+ * boundaries turns repeated scrolls into cache hits.
+ *
+ * Spark routinely writes one row group per part, though, and widening a 256-row
+ * request to a 312k-row group decodes three orders of magnitude too much. Beyond
+ * maxRows the request is left alone and the page index does the narrowing instead.
  */
-export function alignToRowGroups(part: PartFile, start: number, end: number): { start: number; end: number } {
+export function alignToRowGroups(
+  part: PartFile,
+  start: number,
+  end: number,
+  maxRows = 4096,
+): { start: number; end: number } {
   let cursor = 0
   let alignedStart = start
   let alignedEnd = end
@@ -75,5 +84,8 @@ export function alignToRowGroups(part: PartFile, start: number, end: number): { 
     cursor = groupEnd
   }
 
+  if (alignedEnd - alignedStart > Math.max(maxRows, end - start)) {
+    return { start, end: Math.min(end, part.rowCount) }
+  }
   return { start: alignedStart, end: Math.min(alignedEnd, part.rowCount) }
 }

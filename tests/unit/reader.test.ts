@@ -103,3 +103,24 @@ describe('nulls', () => {
     expect(rows[3]?.amount).toBeNull()
   })
 })
+
+describe('schema mismatch between parts', () => {
+  it('reads every row, filling columns a part does not have with null', async () => {
+    const table = await buildTable('mismatch', await fixtureSources('schema-mismatch'))
+    const rows = await readRows(table, 0, table.totalRows, ['id', 'name'])
+
+    expect(rows).toHaveLength(200)
+    expect(rows.every((row) => row !== undefined)).toBe(true)
+
+    const named = rows.filter((row) => row.name !== null)
+    const unnamed = rows.filter((row) => row.name === null)
+    expect(named).toHaveLength(100)
+    expect(unnamed).toHaveLength(100)
+  })
+
+  it('reads the mismatched part without a column projection', async () => {
+    const table = await buildTable('mismatch', await fixtureSources('schema-mismatch'))
+    const rows = await readRows(table, 100, 105, undefined)
+    expect(rows).toHaveLength(5)
+  })
+})

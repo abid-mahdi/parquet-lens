@@ -1,0 +1,59 @@
+import type { Row } from '../core/types'
+import type { TableSummary } from '../core/summary'
+import type { DroppedFile, WorkerRequest, WorkerResponse } from './protocol'
+
+interface Pending {
+  resolve: (response: WorkerResponse) => void
+  reject: (error: Error) => void
+}
+
+export class ParquetClient {
+  private readonly worker: Worker
+  private readonly pending = new Map<number, Pending>()
+  private nextId = 1
+
+  constructor() {
+    this.worker = new Worker(new URL('./parquet.worker.ts', import.meta.url), { type: 'module' })
+    this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+      const response = event.data
+      const entry = this.pending.get(response.id)
+      if (!entry) return
+
+      this.pending.delete(response.id)
+      if (response.kind === 'error') entry.reject(new Error(response.message))
+      else entry.resolve(response)
+    }
+  }
+
+  async open(name: string, files: DroppedFile[]): Promise<TableSummary> {
+    const response = await this.send({ id: this.nextId++, kind: 'open', name, files })
+    if (response.kind !== 'open') throw new Error('Unexpected worker response')
+    return response.summary
+  }
+
+  async rows(start: number, end: number, columns?: string[]): Promise<Row[]> {
+    const response = await this.send({ id: this.nextId++, kind: 'rows', start, end, columns })
+    if (response.kind !== 'rows') throw new Error('Unexpected worker response')
+    return response.rows
+  }
+
+  /** Scrolling past a pending window must not keep the worker busy decoding it. */
+  cancelAll(): void {
+    for (const id of this.pending.keys()) {
+      this.worker.postMessage({ id: this.nextId++, kind: 'cancel', target: id } satisfies WorkerRequest)
+    }
+    this.pending.clear()
+  }
+
+  terminate(): void {
+    this.worker.terminate()
+    this.pending.clear()
+  }
+
+  private send(request: WorkerRequest): Promise<WorkerResponse> {
+    return new Promise((resolve, reject) => {
+      this.pending.set(request.id, { resolve, reject })
+      this.worker.postMessage(request)
+    })
+  }
+}

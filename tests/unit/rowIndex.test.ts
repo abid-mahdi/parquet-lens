@@ -70,3 +70,27 @@ describe('alignToRowGroups', () => {
     expect(aligned.end).toBeLessThanOrEqual(part.rowCount)
   })
 })
+
+describe('alignToRowGroups with oversized row groups', () => {
+  it('does not widen a small request into a huge row group', async () => {
+    const many = await buildTable('rg', await fixtureSources('manyrowgroups'))
+    const part = many.parts[0]!
+    const huge = {
+      ...part,
+      metadata: { ...part.metadata, row_groups: [{ ...part.metadata.row_groups[0]!, num_rows: 300_000n }] },
+      rowCount: 300_000,
+    }
+
+    const aligned = alignToRowGroups(huge, 150_000, 150_256)
+    expect(aligned.end - aligned.start).toBeLessThanOrEqual(4096)
+  })
+
+  it('still aligns when the row group is small enough to be worth it', async () => {
+    const many = await buildTable('rg', await fixtureSources('manyrowgroups'))
+    const part = many.parts[0]!
+    const groupRows = Number(part.metadata.row_groups[0]!.num_rows)
+
+    const aligned = alignToRowGroups(part, groupRows + 10, groupRows + 20, 1_000_000)
+    expect(aligned.start).toBe(groupRows)
+  })
+})

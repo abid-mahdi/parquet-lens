@@ -6,8 +6,13 @@ export function isParquetFile(name: string): boolean {
   return base.endsWith('.parquet') || base.endsWith('.parq')
 }
 
-export function fileSource(file: File, relativePath: string): SourceFile {
+export interface BrowserSourceFile extends SourceFile {
+  file: File
+}
+
+export function fileSource(file: File, relativePath: string): BrowserSourceFile {
   return {
+    file,
     relativePath,
     name: file.name,
     byteLength: file.size,
@@ -19,19 +24,19 @@ export function fileSource(file: File, relativePath: string): SourceFile {
 }
 
 /** Spark writes a directory, so a drop has to be walked rather than read flat. */
-export async function sourcesFromDataTransfer(items: DataTransferItemList): Promise<SourceFile[]> {
+export async function sourcesFromDataTransfer(items: DataTransferItemList): Promise<BrowserSourceFile[]> {
   const entries: FileSystemEntry[] = []
   for (const item of Array.from(items)) {
     const entry = item.webkitGetAsEntry?.()
     if (entry) entries.push(entry)
   }
 
-  const collected: SourceFile[] = []
+  const collected: BrowserSourceFile[] = []
   await Promise.all(entries.map((entry) => walkEntry(entry, '', collected)))
   return collected
 }
 
-export function sourcesFromFileList(files: FileList): SourceFile[] {
+export function sourcesFromFileList(files: FileList): BrowserSourceFile[] {
   return Array.from(files)
     .filter((file) => isParquetFile(file.name))
     .map((file) => fileSource(file, file.webkitRelativePath || file.name))
@@ -44,7 +49,7 @@ export function tableNameFor(sources: SourceFile[], fallback: string): string {
   return segments.length > 1 ? (segments[0] ?? fallback) : first.name.replace(/\.parq(uet)?$/, '')
 }
 
-async function walkEntry(entry: FileSystemEntry, prefix: string, out: SourceFile[]): Promise<void> {
+async function walkEntry(entry: FileSystemEntry, prefix: string, out: BrowserSourceFile[]): Promise<void> {
   const path = prefix ? `${prefix}/${entry.name}` : entry.name
 
   if (entry.isFile) {
